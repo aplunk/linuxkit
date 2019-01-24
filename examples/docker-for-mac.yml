@@ -46,6 +46,32 @@ onboot:
   - name: dhcpcd
     image: linuxkit/dhcpcd:v0.6
     command: ["/sbin/dhcpcd", "--nobackground", "-f", "/dhcpcd.conf", "-1"]
+  - name: wg0
+    image: linuxkit/ip:v0.6
+    net: new
+    binds:
+      - /etc/wireguard:/etc/wireguard
+    command: ["/usr/bin/lk-wg-config", "configure", "/etc/wireguard/wg0.conf"]
+    runtime:
+      interfaces:
+        - name: wg0
+          add: wireguard
+          createInRoot: true
+      bindNS:
+          net: /run/netns/wg0
+  - name: wg1
+    image: linuxkit/ip:v0.6
+    net: new
+    binds:
+      - /etc/wireguard:/etc/wireguard
+    command: ["/usr/bin/lk-wg-config", "configure", "/etc/wireguard/wg1.conf"]
+    runtime:
+      interfaces:
+        - name: wg1
+          add: wireguard
+          createInRoot: true
+      bindNS:
+          net: /run/netns/wg1
 services:
   # Enable acpi to shutdown on power events
   - name: acpid
@@ -55,6 +81,18 @@ services:
     image: linuxkit/getty:2eb742cd7a68e14cf50577c02f30147bc406e478
     env:
         - INSECURE=true
+    net: /run/netns/wg1
+  - name: rngd
+    image: linuxkit/rngd:v0.6
+  - name: nginx
+    image: nginx:1.13.8-alpine
+    net: /run/netns/wg0
+    capabilities:
+     - CAP_NET_BIND_SERVICE
+     - CAP_CHOWN
+     - CAP_SETUID
+     - CAP_SETGID
+     - CAP_DAC_OVERRIDE
   # Run ntpd to keep time synchronised in the VM
   - name: ntpd
     image: linuxkit/openntpd:v0.6
@@ -106,7 +144,28 @@ services:
             "--storage-driver", "overlay2" ]
     runtime:
       mkdir: ["/var/lib/docker"]
-
+files:
+  - path: etc/wireguard/wg0.conf
+    contents: |
+      [Interface]
+      Address = 192.168.2.1/24
+      DNS = 192.168.2.2
+      PrivateKey = KG7EKkHDkp7THfW5mOXcZzo3RbGAjq+ARMfJGFm5G1s=
+      ListenPort = 51820
+      [Peer] 
+      PublicKey = ZP7h1OjA1oIAmsAvMKujp2RAAC/f0kY814b3Xq6j/0Y=
+      AllowedIPs = 0.0.0.0/0
+      Endpoint = 127.0.0.1:51821
+  - path: etc/wireguard/wg1.conf
+    contents: |
+      [Interface]
+      Address = 192.168.2.2/24
+      PrivateKey = SCGCKDuTm4PMOw+LXdK/2s8mxnv145QHOohKRq3vc2A=
+      ListenPort = 51821
+      [Peer]
+      PublicKey = AcS5t3PC5nL/oj0sYhc3yFpDlRaXoJ0mfEq6iq0rFF4=
+      AllowedIPs = 0.0.0.0/0
+      Endpoint = 127.0.0.1:51820
 trust:
     org:
         - linuxkit
